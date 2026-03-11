@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Recrux.AI - Intelligent Multi-Agent Job Matching
 
 **Recrux.AI** is a state-of-the-art job discovery and matching platform powered by a multi-agent AI architecture. It leverages the power of Google's **Gemini 3 Flash Preview** and **LangGraph** to provide hyper-personalized job recommendations by analyzing resumes and matching them with real-world job descriptions.
@@ -87,3 +88,6 @@ npm run dev
 
 ## 📄 License
 Reserved for Recrux.AI Team.
+=======
+Application
+>>>>>>> 6d8e075de836487e47ef0a90ad1698398e72fbd8
