@@ -1,13 +1,13 @@
 import os
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # Initialize Embeddings using Gemini models
-# Note: GoogleGenerativeAIEmbeddings uses the 'models/embedding-001' by default
-embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+# gemini-embedding-001 is confirmed available on this API key
+embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 
 # Define persistent directory for the vector DB
 # In production on GCP, this would be swapped for Vertex AI Vector Search or similar

@@ -3,8 +3,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from models.schemas import ResumeParseOutput
 
 # Initialize the Gemini model for parsing
-# Using gemini-3-flash-preview as requested. It expects GEMINI_API_KEY in the environment.
-llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0.1)
+# Using gemini-3.1-flash-lite-preview
+llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite-preview", temperature=0.1)
 
 # Using structured output feature to guarantee pydantic validation
 structured_llm = llm.with_structured_output(ResumeParseOutput)

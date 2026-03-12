@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Briefcase,
   FileText,
@@ -26,14 +26,134 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
+const API_BASE = "http://127.0.0.1:8001/api";
+
 type View = 'LANDING' | 'LOGIN' | 'SIGNUP' | 'WELCOME' | 'ONBOARDING' | 'JOBS' | 'RESUME' | 'PROFILE';
+
+interface ResumeData {
+  skills: string[];
+  ats_score: number;
+  raw_text?: string;
+}
+
+interface JobListing {
+  id: string;
+  job_title: string;
+  company_name: string;
+  job_description: string;
+  job_listing_link: string;
+  location?: string;
+  match_score?: number;
+  reasoning?: string;
+}
 
 export default function App() {
   const [view, setView] = useState<View>('LANDING');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [resumeData, setResumeData] = useState<ResumeData | null>(null);
+  const [jobs, setJobs] = useState<JobListing[]>([]);
+  const [roleName, setRoleName] = useState('Software Engineer');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/profile/current_user`);
+        if (response.ok) {
+          const data = await response.json();
+          setResumeData({
+            skills: data.skills,
+            ats_score: data.ats_score,
+            raw_text: data.resume_text
+          });
+          setRoleName(data.role_name);
+        }
+      } catch (e) {
+        console.log("No previous profile found.");
+      }
+    };
+    loadProfile();
+  }, []);
 
   const navigate = (newView: View) => {
     setView(newView);
     window.scrollTo(0, 0);
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploadedFileName(file.name);
+
+    setIsAnalyzing(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('role_name', roleName);
+
+    try {
+      // We use the orchestral match endpoint to get everything at once
+      const response = await fetch(`${API_BASE}/jobs/match`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error('Failed to analyze resume');
+
+      const data = await response.json();
+      
+      // Update state with AI results
+      setResumeData(data.parsed_resume);
+      
+      // Combine jobs with their scores
+      const matchedJobs = data.job_listings.map((job: JobListing) => {
+        const scoreEntry = data.scored_jobs.find((s: any) => s.job_id === job.id);
+        return {
+          ...job,
+          match_score: scoreEntry?.match_score || 0,
+          reasoning: scoreEntry?.reasoning || 'No analysis available.'
+        };
+      });
+
+      setJobs(matchedJobs);
+      navigate('JOBS');
+    } catch (error) {
+      console.error('API Error:', error);
+      alert('Error analyzing resume. Please check if the backend is running.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleSearchOnly = async (customRole?: string) => {
+    setIsAnalyzing(true);
+    const targetRole = customRole || roleName;
+    const formData = new FormData();
+    formData.append('role_name', targetRole);
+    
+    try {
+      const response = await fetch(`${API_BASE}/jobs/search`, {
+        method: 'POST',
+        body: formData
+      });
+      if (!response.ok) throw new Error('Search failed');
+      const data = await response.json();
+      
+      const newJobs = data.jobs.map((job: any) => ({
+        ...job,
+        match_score: 0,
+        reasoning: `Search result based on ${targetRole}.`
+      }));
+      
+      setJobs(newJobs);
+      setRoleName(targetRole); // Sync role name
+      setSearchTerm('');
+      navigate('JOBS');
+    } catch (error) {
+       alert("Error searching for jobs. Please check backend.");
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const renderView = () => {
@@ -47,13 +167,29 @@ export default function App() {
       case 'WELCOME':
         return <WelcomePage onNext={() => navigate('ONBOARDING')} />;
       case 'ONBOARDING':
-        return <OnboardingPage onSearchJobs={() => navigate('JOBS')} />;
+        return <OnboardingPage onSearchJobs={handleSearchOnly} onUpload={handleFileUpload} isAnalyzing={isAnalyzing} roleName={roleName} setRoleName={setRoleName} />;
       case 'JOBS':
-        return <DashboardLayout currentView="JOBS" onNavigate={navigate} onSignOut={() => navigate('LANDING')}><JobsPage /></DashboardLayout>;
+        return <DashboardLayout currentView="JOBS" onNavigate={navigate} onSignOut={() => navigate('LANDING')} resumeData={resumeData}>
+          <JobsPage 
+            jobs={jobs} 
+            searchTerm={searchTerm} 
+            setSearchTerm={setSearchTerm} 
+            onSearch={() => handleSearchOnly(searchTerm)}
+            isSearching={isAnalyzing}
+          />
+        </DashboardLayout>;
       case 'RESUME':
-        return <DashboardLayout currentView="RESUME" onNavigate={navigate} onSignOut={() => navigate('LANDING')}><ResumePage /></DashboardLayout>;
+        return <DashboardLayout currentView="RESUME" onNavigate={navigate} onSignOut={() => navigate('LANDING')} resumeData={resumeData}>
+          <ResumePage 
+            atsScore={resumeData?.ats_score} 
+            fileName={uploadedFileName} 
+            onUpload={handleFileUpload}
+          />
+        </DashboardLayout>;
       case 'PROFILE':
-        return <DashboardLayout currentView="PROFILE" onNavigate={navigate} onSignOut={() => navigate('LANDING')}><ProfilePage /></DashboardLayout>;
+        return <DashboardLayout currentView="PROFILE" onNavigate={navigate} onSignOut={() => navigate('LANDING')} resumeData={resumeData}>
+          <ProfilePage skills={resumeData?.skills} roleName={roleName} />
+        </DashboardLayout>;
       default:
         return <LandingPage onLogin={() => navigate('LOGIN')} onSignUp={() => navigate('SIGNUP')} />;
     }
@@ -290,7 +426,13 @@ function WelcomePage({ onNext }: { onNext: () => void }) {
   );
 }
 
-function OnboardingPage({ onSearchJobs }: { onSearchJobs: () => void }) {
+function OnboardingPage({ onSearchJobs, onUpload, isAnalyzing, roleName, setRoleName }: { 
+  onSearchJobs: () => void, 
+  onUpload: (e: any) => void, 
+  isAnalyzing: boolean,
+  roleName: string,
+  setRoleName: (val: string) => void
+}) {
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
       <header className="w-full px-8 py-5 flex items-center justify-between border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-50">
@@ -302,26 +444,43 @@ function OnboardingPage({ onSearchJobs }: { onSearchJobs: () => void }) {
           <div className="p-8 md:p-12">
             <div className="mb-12 text-center">
               <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-4">
-                Scanning your potential.<br />
-                <strong>Finding where you belong next.</strong>
+                {isAnalyzing ? "Analyzing your potential..." : "Scanning your potential."}<br />
+                <strong>{isAnalyzing ? "Our agents are thinking..." : "Finding where you belong next."}</strong>
               </h1>
-              <p className="text-slate-500 text-lg">Upload your resume to start receiving AI-matched job opportunities tailored just for you.</p>
+              <p className="text-slate-500 text-lg">
+                {isAnalyzing ? "We are extracting your skills and finding the best matches using Gemini 3 Flash." : "Upload your resume to start receiving AI-matched job opportunities tailored just for you."}
+              </p>
             </div>
 
-            <div className="space-y-10">
+            <div className={`space-y-10 ${isAnalyzing ? 'opacity-50 pointer-events-none' : ''}`}>
               <div>
                 <label className="block text-sm font-bold text-slate-800 mb-4 uppercase tracking-wide">1. Upload your Resume</label>
                 <div className="relative group cursor-pointer">
                   <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 group-hover:border-indigo-600 group-hover:bg-indigo-50/30 transition-all rounded-2xl p-12 bg-slate-50/50">
-                    <Upload className="text-indigo-600 w-10 h-10 mb-4" />
-                    <p className="text-slate-900 font-semibold mb-1">Drag and drop your file here</p>
+                    {isAnalyzing ? (
+                      <RefreshCw className="text-indigo-600 w-10 h-10 mb-4 animate-spin" />
+                    ) : (
+                      <Upload className="text-indigo-600 w-10 h-10 mb-4" />
+                    )}
+                    <p className="text-slate-900 font-semibold mb-1">{isAnalyzing ? "Processing..." : "Drag and drop your file here"}</p>
                     <p className="text-slate-500 text-sm">PDF, DOCX up to 10MB</p>
                     <button className="mt-6 px-6 py-2.5 bg-white border border-slate-200 text-slate-700 text-xs font-bold uppercase tracking-widest rounded-lg shadow-sm hover:border-indigo-600 hover:text-indigo-600 transition-all">
                       Browse Files
                     </button>
                   </div>
-                  <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" />
+                  <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={onUpload} disabled={isAnalyzing} />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-4 uppercase tracking-wide">2. What role are you looking for?</label>
+                <input 
+                  type="text" 
+                  value={roleName}
+                  onChange={(e) => setRoleName(e.target.value)}
+                  className="w-full px-6 py-4 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 outline-none transition-all shadow-sm font-semibold"
+                  placeholder="e.g. Frontend Developer, Data Scientist..."
+                />
               </div>
 
               <div className="pt-8 space-y-4">
@@ -349,7 +508,7 @@ function OnboardingPage({ onSearchJobs }: { onSearchJobs: () => void }) {
   );
 }
 
-function DashboardLayout({ children, currentView, onNavigate, onSignOut }: { children: React.ReactNode, currentView: View, onNavigate: (v: View) => void, onSignOut: () => void }) {
+function DashboardLayout({ children, currentView, onNavigate, onSignOut, resumeData }: { children: React.ReactNode, currentView: View, onNavigate: (v: View) => void, onSignOut: () => void, resumeData: ResumeData | null }) {
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-50">
       <header className="w-full h-16 bg-white border-b border-indigo-50 px-6 flex items-center justify-between z-10 shrink-0">
@@ -409,15 +568,22 @@ function DashboardLayout({ children, currentView, onNavigate, onSignOut }: { chi
           </div>
         </aside>
 
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto relative">
           {children}
+          <ChatWidget userContext={resumeData?.raw_text} />
         </main>
       </div>
     </div>
   );
 }
 
-function JobsPage() {
+function JobsPage({ jobs, searchTerm, setSearchTerm, onSearch, isSearching }: { jobs: JobListing[], searchTerm: string, setSearchTerm: (val: string) => void, onSearch: () => void, isSearching: boolean }) {
+  const filteredJobs = jobs.filter(job => 
+    job.job_title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    job.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (job.reasoning && job.reasoning.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
   return (
     <div className="max-w-5xl mx-auto px-8 py-10">
       <header className="mb-10">
@@ -426,58 +592,69 @@ function JobsPage() {
           <span className="text-sm font-bold tracking-wide uppercase">AI RECOMMENDATIONS</span>
         </div>
         <h1 className="text-3xl font-bold text-slate-900">Our Agent-Matched Jobs</h1>
-        <p className="text-slate-500 mt-2">Based on your recent resume analysis and career preferences.</p>
+        <p className="text-slate-500 mt-2">Based on your recent resume analysis and {jobs.length > 0 ? jobs[0].job_title : 'career'} preferences.</p>
       </header>
 
-      <div className="mb-8">
-        <div className="relative group">
+      <div className="mb-8 flex gap-4">
+        <div className="relative group flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors w-5 h-5" />
-          <input className="block w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition-all shadow-sm" placeholder="Search job titles, companies or keywords..." />
+          <input 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && onSearch()}
+            className="block w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition-all shadow-sm" 
+            placeholder="Filter jobs or type a new role to search..." 
+          />
         </div>
+        <button 
+          onClick={onSearch}
+          disabled={isSearching}
+          className="px-8 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50 flex items-center gap-2"
+        >
+          {isSearching ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+          SEARCH
+        </button>
       </div>
 
       <div className="space-y-4">
-        {[
-          { title: 'Senior UI/UX Designer', company: 'Stellar Cloud Systems', location: 'San Francisco, CA (Remote)', match: '98%', type: 'Full-time', icon: <Globe className="w-6 h-6" />, tags: ['Design Systems', 'Figma', 'Prototyping'] },
-          { title: 'Product Designer, FinTech', company: 'NeoBank Global', location: 'London, UK', match: '94%', type: 'Full-time', icon: <Building2 className="w-6 h-6" />, tags: ['FinTech', 'Visual Design', 'User Research'] },
-          { title: 'Interface Specialist (Contract)', company: 'Velocity Startups', location: 'Austin, TX', match: '89%', type: 'Contract', icon: <Clock className="w-6 h-6" />, tags: ['Webflow', 'Motion Design'] },
-        ].map((job, i) => (
+        {filteredJobs.length > 0 ? filteredJobs.map((job, i) => (
           <div key={i} className="group relative bg-white p-6 rounded-xl border border-indigo-50 hover:border-indigo-200 hover:shadow-xl transition-all duration-300">
             <button className="absolute top-6 right-32 p-2 rounded-full bg-slate-100 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors">
               <Bookmark className="w-5 h-5" />
             </button>
             <div className="absolute top-6 right-6 px-3 py-1 bg-indigo-50 rounded-full">
-              <span className="text-xs font-bold text-indigo-600 italic">{job.match} Match</span>
+              <span className="text-xs font-bold text-indigo-600 italic">{job.match_score}% Match</span>
             </div>
             <div className="flex items-start gap-5">
               <div className="w-12 h-12 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0 text-indigo-600">
-                {job.icon}
+                <Briefcase className="w-6 h-6" />
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{job.title}</h3>
+                <h3 className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{job.job_title}</h3>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-sm text-slate-500">
-                  <span className="flex items-center gap-1 font-medium text-slate-600"><Building2 className="w-4 h-4" /> {job.company}</span>
-                  <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> {job.location}</span>
-                  <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {job.type}</span>
+                  <span className="flex items-center gap-1 font-medium text-slate-600"><Building2 className="w-4 h-4" /> {job.company_name}</span>
+                  <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> {job.location || 'Remote'}</span>
                 </div>
-                <p className="mt-4 text-sm leading-relaxed text-slate-600 line-clamp-2">
-                  We're looking for a visionary to lead our core product's user experience transformation. Your expertise in design systems and AI-driven workflows aligns perfectly...
+                <p className="mt-4 text-sm leading-relaxed text-slate-600">
+                  {job.reasoning}
                 </p>
                 <div className="mt-5 flex gap-2">
-                  {job.tags.map(tag => (
-                    <span key={tag} className="px-2 py-1 text-[11px] font-semibold bg-slate-100 text-slate-600 rounded">{tag}</span>
-                  ))}
+                   <a href={job.job_listing_link} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-600 hover:underline">View Listing</a>
                 </div>
               </div>
             </div>
           </div>
-        ))}
+        )) : (
+          <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
+            <p className="text-slate-500 font-medium">{jobs.length === 0 ? "No jobs found. Try uploading a resume first!" : "No jobs match your search."}</p>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function ResumePage() {
+function ResumePage({ atsScore, fileName, onUpload }: { atsScore?: number, fileName: string | null, onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void }) {
   return (
     <div className="max-w-5xl mx-auto px-8 py-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -485,50 +662,51 @@ function ResumePage() {
           <h1 className="text-2xl font-bold text-slate-900">My Resumes</h1>
           <p className="text-slate-500 text-sm mt-1">Manage and select your active resume for job matching</p>
         </div>
-        <button className="flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold shadow-lg shadow-indigo-200 hover:shadow-indigo-300 hover:-translate-y-0.5 transition-all">
-          <Upload className="w-5 h-5" />
-          <span>Upload New Resume</span>
-        </button>
+        <div className="relative">
+          <input 
+            type="file" 
+            id="resume-upload-dash" 
+            className="hidden" 
+            accept=".pdf,.docx,.txt"
+            onChange={onUpload}
+          />
+          <label 
+            htmlFor="resume-upload-dash"
+            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold shadow-lg shadow-indigo-200 hover:shadow-indigo-300 hover:-translate-y-0.5 transition-all cursor-pointer"
+          >
+            <Upload className="w-5 h-5" />
+            <span>Upload New Resume</span>
+          </label>
+        </div>
       </div>
 
       <div className="grid gap-4">
-        <div className="relative flex items-center gap-4 p-5 bg-white border-2 border-indigo-600 rounded-2xl shadow-sm">
-          <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
-            <FileText className="w-7 h-7" />
-          </div>
-          <div className="flex-1 min-w-0">
+        {fileName ? (
+          <div className="relative flex items-center gap-4 p-5 bg-white border-2 border-indigo-600 rounded-2xl shadow-sm">
+            <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
+              <FileText className="w-7 h-7" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-slate-900 truncate">{fileName}</h3>
+                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-600 text-[10px] font-bold uppercase rounded-md tracking-wider">Active</span>
+              </div>
+              <div className="flex items-center gap-4 mt-1 text-xs text-slate-500">
+                <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Just Uploaded</span>
+              </div>
+            </div>
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-slate-900 truncate">Software_Engineer_2024.pdf</h3>
-              <span className="px-2 py-0.5 bg-indigo-100 text-indigo-600 text-[10px] font-bold uppercase rounded-md tracking-wider">Active</span>
-            </div>
-            <div className="flex items-center gap-4 mt-1 text-xs text-slate-500">
-              <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Updated Oct 24, 2023</span>
-              <span className="flex items-center gap-1"><FileText className="w-3 h-3" /> 1.2 MB</span>
+              <div className="flex flex-col items-center px-4 border-l border-slate-100">
+                  <span className="text-xl font-black text-indigo-600">{atsScore || 0}%</span>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">ATS Score</span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-indigo-600 transition-colors"><Eye className="w-5 h-5" /></button>
-            <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-indigo-600 transition-colors"><Download className="w-5 h-5" /></button>
-            <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5" /></button>
+        ) : (
+          <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
+             <p className="text-slate-500">No active resume. Upload one to see analysis.</p>
           </div>
-        </div>
-
-        <div className="relative flex items-center gap-4 p-5 bg-white border border-slate-200 rounded-2xl hover:border-slate-300 transition-all group cursor-pointer">
-          <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
-            <FileText className="w-7 h-7" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-slate-700 truncate group-hover:text-slate-900 transition-colors">Product_Manager_Draft.pdf</h3>
-            <div className="flex items-center gap-4 mt-1 text-xs text-slate-400">
-              <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Updated Sep 12, 2023</span>
-              <span className="flex items-center gap-1"><FileText className="w-3 h-3" /> 0.8 MB</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button className="px-3 py-1.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">Make Active</button>
-            <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 transition-colors"><MoreVertical className="w-5 h-5" /></button>
-          </div>
-        </div>
+        )}
       </div>
 
       <div className="mt-8 bg-indigo-50/50 rounded-2xl p-6 border border-indigo-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -547,7 +725,7 @@ function ResumePage() {
   );
 }
 
-function ProfilePage() {
+function ProfilePage({ skills, roleName }: { skills?: string[], roleName: string }) {
   return (
     <div className="max-w-5xl mx-auto px-8 py-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-8 border-b border-slate-200 mb-8">
@@ -556,94 +734,128 @@ function ProfilePage() {
             <User className="w-12 h-12 text-indigo-600" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Alex Johnson</h1>
-            <p className="text-slate-500 font-medium">Senior Product Designer & Frontend Enthusiast</p>
-            <div className="flex flex-wrap gap-4 mt-3">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                Open to Work
-              </span>
-              <span className="inline-flex items-center gap-1.5 text-slate-500 text-xs">
-                <MapPin className="w-4 h-4" />
-                San Francisco, CA
-              </span>
-            </div>
+            <h1 className="text-3xl font-bold text-slate-900">Career Profile</h1>
+            <p className="text-slate-500 font-medium">Aspiring {roleName}</p>
           </div>
         </div>
-        <button className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-200 hover:shadow-indigo-300 hover:-translate-y-0.5 transition-all">
-          Save Changes
-        </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="space-y-6">
-          <div className="flex items-center gap-2 text-indigo-600 font-bold">
-            <User className="w-5 h-5" />
-            <h3 className="text-lg text-slate-900">Personal Information</h3>
-          </div>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Full Name</label>
-              <input className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm" defaultValue="Alex Johnson" />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Email Address</label>
-              <input className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm" defaultValue="alex.j@example.com" />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Phone Number</label>
-              <input className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm" defaultValue="+1 (555) 000-1234" />
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <div className="flex items-center gap-2 text-indigo-600 font-bold">
-            <Globe className="w-5 h-5" />
-            <h3 className="text-lg text-slate-900">Social Links</h3>
-          </div>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">LinkedIn Profile</label>
-              <input className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm" defaultValue="linkedin.com/in/alexjohnson" />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Portfolio Website</label>
-              <input className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm" defaultValue="alexj-design.com" />
-            </div>
-          </div>
-        </div>
-
-        <div className="md:col-span-2 space-y-4">
-          <div className="flex items-center gap-2 text-indigo-600 font-bold">
-            <FileText className="w-5 h-5" />
-            <h3 className="text-lg text-slate-900">Professional Summary</h3>
-          </div>
-          <textarea
-            className="w-full px-4 py-4 rounded-2xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm leading-relaxed"
-            rows={6}
-            defaultValue="Senior Product Designer with over 8 years of experience in creating user-centered digital products. Expertise in design systems, UX research, and frontend prototyping. Proven track record of leading cross-functional teams to deliver high-impact solutions for tech startups and enterprise clients."
-          />
-        </div>
-
-        <div className="md:col-span-2 space-y-4">
+      <div className="grid grid-cols-1 gap-8">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-indigo-600 font-bold">
               <Star className="w-5 h-5" />
-              <h3 className="text-lg text-slate-900">Key Skills</h3>
+              <h3 className="text-lg text-slate-900">Extracted Skills</h3>
             </div>
-            <button className="text-sm font-bold text-indigo-600 hover:underline">Edit Skills</button>
           </div>
           <div className="flex flex-wrap gap-2.5">
-            {['UI/UX Design', 'React.js', 'Figma', 'Design Systems', 'Tailwind CSS', 'Product Strategy'].map(skill => (
-              <span key={skill} className="px-4 py-2 bg-indigo-50 rounded-full text-sm font-semibold text-slate-700 border border-indigo-100">{skill}</span>
-            ))}
-            <button className="px-4 py-2 border-2 border-dashed border-slate-200 rounded-full text-sm font-bold text-slate-400 hover:border-indigo-600 hover:text-indigo-600 transition-all">
-              + Add Skill
-            </button>
+            {skills && skills.length > 0 ? skills.map(skill => (
+              <span key={skill} className="px-4 py-2 bg-indigo-50 rounded-full text-sm font-semibold text-slate-700 border border-indigo-100 animate-in fade-in zoom-in duration-300">{skill}</span>
+            )) : (
+              <p className="text-slate-400 italic">No skills extracted yet. Upload a resume to see AI analysis.</p>
+            )}
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ChatWidget({ userContext }: { userContext?: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [message, setMessage] = useState('');
+  const [chatLog, setChatLog] = useState<{ role: 'user' | 'assistant', text: string }[]>([]);
+  const [isTyping, setIsTyping] = useState(false);
+
+  const handleSend = async () => {
+    if (!message.trim()) return;
+    
+    const userMsg = message;
+    setChatLog([...chatLog, { role: 'user', text: userMsg }]);
+    setMessage('');
+    setIsTyping(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMsg, user_context: userContext })
+      });
+      const data = await response.json();
+      setChatLog(prev => [...prev, { role: 'assistant', text: data.response }]);
+    } catch (error) {
+      setChatLog(prev => [...prev, { role: 'assistant', text: "Sorry, I'm having trouble connecting to the brain right now." }]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50">
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8, y: 20 }}
+            className="mb-4 w-80 md:w-96 h-[500px] bg-white rounded-2xl shadow-2xl border border-indigo-100 flex flex-col overflow-hidden"
+          >
+            <div className="p-4 bg-indigo-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Wand2 className="w-5 h-5" />
+                <span className="font-bold">Recrux Assistant</span>
+              </div>
+              <button onClick={() => setIsOpen(false)} className="opacity-70 hover:opacity-100">×</button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+              {chatLog.length === 0 && (
+                <div className="text-center py-10">
+                   <p className="text-slate-400 text-sm">Ask me anything about your career or job matches!</p>
+                </div>
+              )}
+              {chatLog.map((log, i) => (
+                <div key={i} className={`flex ${log.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${log.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none'}`}>
+                    {log.text}
+                  </div>
+                </div>
+              ))}
+              {isTyping && (
+                <div className="flex justify-start">
+                   <div className="bg-white border border-slate-200 p-3 rounded-2xl rounded-tl-none animate-pulse">
+                      <div className="flex gap-1">
+                        <span className="w-1 h-1 bg-slate-400 rounded-full animate-bounce"></span>
+                        <span className="w-1 h-1 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                        <span className="w-1 h-1 bg-slate-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
+                      </div>
+                   </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-white border-t border-slate-100 flex gap-2">
+              <input 
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                placeholder="Type a message..." 
+                className="flex-1 bg-slate-100 border-none rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 transition-all outline-none" 
+              />
+              <button onClick={handleSend} className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors">
+                 <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-14 h-14 bg-indigo-600 text-white rounded-full shadow-xl shadow-indigo-200 flex items-center justify-center hover:scale-110 active:scale-95 transition-all"
+      >
+        {isOpen ? <ChevronRight className="w-6 h-6 rotate-90" /> : <Wand2 className="w-6 h-6" />}
+      </button>
     </div>
   );
 }

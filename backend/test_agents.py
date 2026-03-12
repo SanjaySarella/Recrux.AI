@@ -91,34 +91,61 @@ def test_job_match_agent(resume_text, jobs):
         return None
 
 
+def test_orchestrator(file_path):
+    print("\n--- Testing Full Orchestrator Workflow (/jobs/match) ---")
+    url = f"{BASE_URL}/jobs/match"
+    
+    with open(file_path, "rb") as f:
+        files = {"file": (file_path, f, "text/plain")}
+        data = {"role_name": "Software Engineer"}
+        try:
+            response = requests.post(url, files=files, data=data)
+            response.raise_for_status()
+            result = response.json()
+            print("Orchestrator Success!")
+            print(f"Skills Extracted: {result['parsed_resume']['skills']}")
+            print(f"Jobs Found: {len(result['job_listings'])}")
+            print(f"Scored Jobs: {len(result['scored_jobs'])}")
+            return result
+        except Exception as e:
+            print(f"Error testing Orchestrator: {e}")
+            return None
+
+def test_chat():
+    print("\n--- Testing AI Assistant (/chat) ---")
+    url = f"{BASE_URL}/chat"
+    data = {
+        "message": "Can you summarize my skills?",
+        "user_context": "Skills: Python, React, Cloud Computing"
+    }
+    try:
+        response = requests.post(url, json=data)
+        response.raise_for_status()
+        result = response.json()
+        print(f"AI Response: {result['response']}")
+    except Exception as e:
+        print(f"Error testing Chat: {e}")
+
 if __name__ == "__main__":
     print("Starting Agent Tests...")
     
     # Check if backend is running
     try:
-        requests.get("http://127.0.0.1:8001/")
+        requests.get("http://127.0.0.1:8001/") # Root endpoint exists
     except requests.exceptions.ConnectionError:
         print("ERROR: FastAPI server is not running or not accessible at http://127.0.0.1:8001/")
-        print("Please start it with: 'uvicorn main:app --reload --port 8001'")
         exit(1)
         
     resume_file = create_dummy_resume()
     
-    # 1. Test Resume Agent
-    parsed_data = test_resume_agent(resume_file)
+    # New Orchestrator Test
+    test_orchestrator(resume_file)
     
-    if parsed_data:
-        # 2. Test Job Search Agent
-        skills = parsed_data.get("skills", ["Python", "React"])
-        jobs = test_job_search_agent(skills, "Software Engineer")
-        
-        # 3. Test Job Match / Score Agent
-        if jobs:
-            raw_text = parsed_data.get("raw_text", "John Doe Python Developer")
-            test_job_match_agent(raw_text, jobs)
+    # New Chat Test
+    test_chat()
             
     # Cleanup
     if os.path.exists(resume_file):
         os.remove(resume_file)
         
-    print("\\nAll tests completed!")
+    print("\nAll tests completed!")

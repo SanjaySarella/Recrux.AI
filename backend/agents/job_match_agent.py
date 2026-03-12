@@ -4,7 +4,8 @@ from models.schemas import JobScore
 import asyncio
 
 # Initialize the Gemini model for scoring
-llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview", temperature=0.2)
+# Initialize the Gemini model for scoring
+llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite-preview", temperature=0.2)
 structured_llm = llm.with_structured_output(JobScore)
 
 score_prompt_template = """

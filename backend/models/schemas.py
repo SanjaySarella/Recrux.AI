@@ -34,3 +34,19 @@ class JobScore(BaseModel):
 
 class JobMatchScoreOutput(BaseModel):
     scores: List[JobScore]
+
+# --- Orchestrator Output ---
+
+class GraphWorkflowOutput(BaseModel):
+    parsed_resume: ResumeParseOutput
+    job_listings: List[JobListing]
+    scored_jobs: List[JobScore]
+
+# --- Chat Models ---
+
+class ChatRequest(BaseModel):
+    message: str
+    user_context: Optional[str] = Field(default=None, description="Additional context like resume text or job details.")
+
+class ChatResponse(BaseModel):
+    response: str
