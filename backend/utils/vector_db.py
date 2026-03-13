@@ -5,12 +5,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Initialize Embeddings using Gemini models
-# gemini-embedding-001 is confirmed available on this API key
-embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+# Initialize Embeddings
+# Options: 'gemini' or 'ollama'
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "gemini").lower()
 
-# Define persistent directory for the vector DB
-# In production on GCP, this would be swapped for Vertex AI Vector Search or similar
+if EMBEDDING_PROVIDER == "ollama":
+    from langchain_ollama import OllamaEmbeddings
+    # Using nomic-embed-text for local high-performance embeddings
+    embeddings = OllamaEmbeddings(model="nomic-embed-text")
+else:
+    from langchain_google_genai import GoogleGenerativeAIEmbeddings
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+
 CHROMA_DB_DIR = os.path.join(os.path.dirname(__file__), "..", "chroma_db")
 
 def get_vector_store(collection_name: str):

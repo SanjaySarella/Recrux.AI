@@ -36,18 +36,21 @@
 ## 📁 Project Structure
 
 ```bash
-project-root/
-│
 ├── frontend/             # React Application (Vite)
-│   ├── src/              # UI components and logic
-│   └── package.json      # Frontend dependencies
+│   ├── src/
+│   │   ├── types/        # TypeScript Interfaces
+│   │   ├── services/     # API & Logic services
+│   │   ├── components/   # Layouts & UI components
+│   │   ├── pages/        # Application screens
+│   │   └── App.tsx       # Main Entry Point
+│   └── package.json
 │
 └── backend/              # FastAPI Application
-    ├── agents/           # LangGraph Agents (Resume, Search, Match)
-    ├── routers/          # API Endpoints
-    ├── models/           # Pydantic data schemas
-    ├── utils/            # Utilities (File parsing, Mock data)
-    └── main.py           # Application entry point
+    ├── agents/           # AI Core (LangGraph)
+    ├── routers/          # API Handlers
+    ├── models/           # Data Schemas
+    ├── utils/            # DB & Parsing Utils
+    └── main.py           # Server Entry Point
 ```
 
 ---

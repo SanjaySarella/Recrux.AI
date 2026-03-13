@@ -11,14 +11,25 @@ structured_llm = llm.with_structured_output(ResumeParseOutput)
 
 prompt_template = """
 You are an expert ATS (Applicant Tracking System) parser.
-Your task is to thoroughly analyze the provided resume text and extract the following:
-1. A comprehensive list of technical and soft skills (return as a list of strings).
-2. An estimated ATS score out of 100 based on the resume's clarity, structure, and keyword richness.
+Standardize the following resume into a clean structured format.
 
-Here is the resume text:
+Extract:
+- Full Name
+- Contact (Email, Phone)
+- Links (LinkedIn, GitHub, Portfolio)
+- Professional Summary (2-3 sentences max)
+- Technical and Soft Skills (as a list of strings)
+- Experience (List of: company, role, duration, description)
+- Projects (List of: title, technologies used, description)
+- Education (List of: institution, degree, year)
+- Estimated ATS Score (0-100)
+
+If a section is missing, provide an empty list or None.
+
+Resume Text:
 {resume_text}
 
-Analyze it and provide the structured output.
+Provide the response in the specified structured format.
 """
 
 prompt = PromptTemplate(
@@ -30,7 +41,7 @@ chain = prompt | structured_llm
 
 async def process_resume(resume_text: str) -> ResumeParseOutput:
     """
-    Takes raw resume text and uses Gemini to extract skills and an ATS score.
+    Takes raw resume text and uses Gemini to extract standardized sections and an ATS score.
     Returns a ResumeParseOutput object.
     """
     try:
@@ -39,18 +50,24 @@ async def process_resume(resume_text: str) -> ResumeParseOutput:
         # Add the raw text to the result object
         result.raw_text = resume_text
         
-        # --- VECTOR DB INTEGRATION ---
-        # Automatically embed and store in Vector DB
+        # --- STORAGE INTEGRATION ---
+        # 1. Save to Vector DB for semantic searching
         from utils.vector_db import store_resume_vector
-        # For now we use a default ID, in production this would be the user's resume ID
-        store_resume_vector("current_user_resume", resume_text)
+        # Embedding focus: Summary + Skills + Roles
+        content_to_embed = f"{result.professional_summary}\nSkills: {', '.join(result.skills)}\nExperience: {len(result.experience)} roles"
+        store_resume_vector("current_user_resume", content_to_embed)
+        
+        # 2. Save structured data to SQLite
+        from utils.database import save_profile
+        save_profile(result.model_dump(), "Software Engineer") # Default role
         
         return result
     except Exception as e:
         print(f"Error parsing resume with Gemini: {e}")
-        # Return fallback on failure
+        # Return a minimalist fallback on failure
         return ResumeParseOutput(
+            full_name="User",
+            professional_summary="Error parsing resume content.",
             skills=[],
-            ats_score=0,
             raw_text=resume_text
         )
