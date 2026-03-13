@@ -49,8 +49,11 @@ async def run_full_workflow(file: UploadFile = File(...), role_name: str = Form(
             job_listings=final_state["job_listings"],
             scored_jobs=final_state["scored_jobs"]
         )
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Orchestrator error: {str(e)}")
+
 
 @router.post("/resume/parse", response_model=ResumeParseOutput, tags=["Agents"])
 async def parse_resume(file: UploadFile = File(...)):
@@ -122,3 +125,4 @@ async def fetch_user_profile(profile_id: str):
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
     return profile
+ 
