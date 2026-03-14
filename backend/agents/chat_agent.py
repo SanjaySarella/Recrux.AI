@@ -2,13 +2,15 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from utils.vector_db import query_similar_jobs
 
-# Initialize Gemini
-llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite-preview", temperature=0.7)
+from utils.llm_factory import get_llm
+
+# Initialize model via factory
+llm = get_llm(temperature=0.7)
 
 system_prompt = """
-You are the Recrux.AI Career Assistant. Your goal is to help users land their dream job.
-You can answer questions about their resume, job matches, and career advice.
-Use the provided Context to give specific answers. If you don't know the answer, just say you don't know.
+You are the Recrux.AI Career Assistant. 
+Provide crisp, professional, 1-2 sentence maximum answers.
+Use the provided Context to give specific advice. If you don't know, say you don't know.
 
 Context:
 {context}
@@ -40,4 +42,13 @@ async def ask_assistant(question: str, user_context: str = None) -> str:
     chain = prompt | llm
     response = await chain.ainvoke({"context": full_context, "question": question})
     
-    return response.content
+    # Ensure response content is always a string (some models return a list of blocks)
+    content = response.content
+    if isinstance(content, list):
+        # Extract text components from content blocks if necessary
+        content = "".join([
+            block.get("text", "") if isinstance(block, dict) and block.get("type") == "text" else str(block)
+            for block in content
+        ])
+    
+    return str(content)

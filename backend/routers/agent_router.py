@@ -37,10 +37,7 @@ async def run_full_workflow(file: UploadFile = File(...), role_name: str = Form(
         # 3. Persist to DB
         parsed = final_state["parsed_resume"]
         save_profile(
-            profile_id="current_user", # Static for now
-            resume_text=text,
-            skills=parsed.skills,
-            ats_score=parsed.ats_score,
+            profile_data=parsed.model_dump(),
             role_name=role_name
         )
         

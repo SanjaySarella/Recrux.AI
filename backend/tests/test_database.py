@@ -14,20 +14,27 @@ def setup_test_db(monkeypatch, tmp_path):
 
 def test_save_and_get_profile():
     profile_id = "test_user_123"
-    resume_text = "Sample resume content"
-    skills = ["Python", "Docker"]
-    ats_score = 85
+    profile_data = {
+        "id": profile_id,
+        "full_name": "Test User",
+        "email": "test@example.com",
+        "professional_summary": "Expert dev",
+        "skills": ["Python", "Docker"],
+        "ats_score": 85,
+        "raw_text": "Sample resume content"
+    }
     role_name = "Backend Engineer"
     
-    save_profile(profile_id, resume_text, skills, ats_score, role_name)
+    save_profile(profile_data, role_name)
     
     profile = get_profile(profile_id)
     assert profile is not None
     assert profile["id"] == profile_id
-    assert profile["resume_text"] == resume_text
-    assert profile["skills"] == skills
-    assert profile["ats_score"] == ats_score
+    assert profile["full_name"] == "Test User"
+    assert profile["skills"] == ["Python", "Docker"]
+    assert profile["ats_score"] == 85
     assert profile["role_name"] == role_name
+    assert profile["raw_text"] == "Sample resume content"
 
 def test_get_nonexistent_profile():
     profile = get_profile("nonexistent")

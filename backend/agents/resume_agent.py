@@ -1,12 +1,16 @@
 from langchain_core.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from models.schemas import ResumeParseOutput
+from dotenv import load_dotenv
 
-# Initialize the Gemini model for parsing
-# Using gemini-3.1-flash-lite-preview
-llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite-preview", temperature=0.1)
+load_dotenv()
 
-# Using structured output feature to guarantee pydantic validation
+from utils.llm_factory import get_llm
+
+# Initialize the model via factory
+llm = get_llm(temperature=0.1)
+
+# Note: with_structured_output is supported on Gemini models
 structured_llm = llm.with_structured_output(ResumeParseOutput)
 
 prompt_template = """

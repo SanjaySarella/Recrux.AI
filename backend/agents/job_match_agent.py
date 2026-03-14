@@ -1,11 +1,14 @@
 from langchain_core.prompts import PromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
 from models.schemas import JobScore
 import asyncio
 
-# Initialize the Gemini model for scoring
-# Initialize the Gemini model for scoring
-llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite-preview", temperature=0.2)
+from dotenv import load_dotenv
+load_dotenv()
+
+from utils.llm_factory import get_llm
+
+# Initialize the model via factory
+llm = get_llm(temperature=0.2)
 structured_llm = llm.with_structured_output(JobScore)
 
 score_prompt_template = """

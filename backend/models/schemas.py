@@ -20,11 +20,11 @@ class EducationEntry(BaseModel):
     year: str
 
 class ResumeParseOutput(BaseModel):
-    full_name: str = Field(description="Full name of the candidate")
+    full_name: str = Field(default="Candidate", description="Full name of the candidate")
     email: Optional[str] = None
     phone: Optional[str] = None
     links: List[str] = Field(default_factory=list, description="Social links like LinkedIn, GitHub, Portfolio")
-    professional_summary: str = Field(description="A brief professional overview")
+    professional_summary: str = Field(default="", description="A brief professional overview")
     skills: List[str] = Field(description="List of technical and soft skills extracted from the resume.")
     experience: List[ExperienceEntry] = Field(default_factory=list)
     projects: List[ProjectEntry] = Field(default_factory=list)

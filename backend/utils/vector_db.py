@@ -5,17 +5,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Initialize Embeddings
-# Options: 'gemini' or 'ollama'
-EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "gemini").lower()
+from utils.llm_factory import get_embeddings
 
-if EMBEDDING_PROVIDER == "ollama":
-    from langchain_ollama import OllamaEmbeddings
-    # Using nomic-embed-text for local high-performance embeddings
-    embeddings = OllamaEmbeddings(model="nomic-embed-text")
-else:
-    from langchain_google_genai import GoogleGenerativeAIEmbeddings
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+# Initialize Embeddings via factory
+embeddings = get_embeddings()
 
 CHROMA_DB_DIR = os.path.join(os.path.dirname(__file__), "..", "chroma_db")
 
@@ -24,7 +17,7 @@ def get_vector_store(collection_name: str):
     Returns a Chroma vector store instance for a specific collection.
     """
     return Chroma(
-        collection_name=collection_name,
+        collection_name=f"{collection_name}_v2",
         embedding_function=embeddings,
         persist_directory=CHROMA_DB_DIR
     )
