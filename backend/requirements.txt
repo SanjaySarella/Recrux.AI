@@ -14,6 +14,11 @@ langchain-community>=0.0.10
 langchain-ollama>=0.1.0
 pandas>=2.0.0
 tqdm>=4.65.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
+langchain-postgres>=0.0.9
+passlib[bcrypt]>=1.7.4
+python-jose[cryptography]>=3.3.0
 google-auth-oauthlib 
 google-auth-httplib2 
 google-api-python-client   
